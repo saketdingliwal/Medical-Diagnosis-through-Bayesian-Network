@@ -6,7 +6,7 @@
 #include <sstream>
 #include <cstdlib>
 #include<bits/stdc++.h>
-
+#include <random>
 
 // Format checker just assumes you have Alarm.bif and Solved_Alarm.bif (your file) in current directory
 using namespace std;
@@ -23,7 +23,7 @@ public:
 	vector<string> values; // Categories of possible values
 	vector<int> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
 	vector<int> updated_CPT;
-
+	vector <double> final_CPT;
 
 	// Constructor- a node is initialised with its name and its categories
   Graph_Node(string name,int n,vector<string> vals)
@@ -178,6 +178,8 @@ void read_network()
  				{
 					Alarm.Pres_Graph[index].CPT.push_back(0); // TODO assuming only -1 to be in input
 					Alarm.Pres_Graph[index].updated_CPT.push_back(0);
+					Alarm.Pres_Graph[index].final_CPT.push_back(0.0);
+
  					ss2>>temp;
 				}
    		}
@@ -208,11 +210,14 @@ void read_samples()
   	while (! myfile.eof() )
   	{
 			sample this_sample;
+			this_sample.missing_index = -1;
 			string record;
 			getline (myfile,record);
 			istringstream buf(record);
 	    istream_iterator<std::string> beg(buf), end;
 	    vector<string> tokens(beg, end);
+			if(tokens.size()!=Alarm.Pres_Graph.size())
+				continue;
 			for(int i=0;i<tokens.size();i++)
 			{
 				string value = tokens[i];
@@ -230,12 +235,13 @@ void read_samples()
 		if(find==1)
   	myfile.close();
 	}
-	sample_list.pop_back();
 }
-void update(int node_index,int sample_index,int direction)
+
+int get_cpt_index(int node_index,int sample_index,int node_value)
 {
 	int cpt_index = 0;
-	int node_value = sample_list[sample_index].values_points[node_index];
+	if(node_value==-1)
+		node_value = sample_list[sample_index].values_points[node_index];
 	int num_parents = Alarm.Pres_Graph[node_index].Parents.size();
 	int prod = 1;
 	for(int i=num_parents-1;i>=0;i--)
@@ -246,6 +252,11 @@ void update(int node_index,int sample_index,int direction)
 		prod = prod * (Alarm.Pres_Graph[parent_index].values.size());
 	}
 	cpt_index += (node_value*prod);
+	return cpt_index;
+}
+void update(int node_index,int sample_index,int direction)
+{
+	int cpt_index = get_cpt_index(node_index,sample_index,-1);
 	Alarm.Pres_Graph[node_index].updated_CPT[cpt_index] +=(direction);
 }
 
@@ -267,10 +278,56 @@ void debug_print()
 		cout << Alarm.Pres_Graph[i].Node_Name <<endl;
 		for(int j=0;j<Alarm.Pres_Graph[i].updated_CPT.size();j++)
 		{
-			cout << Alarm.Pres_Graph[i].updated_CPT[j] << endl;
+			cout << Alarm.Pres_Graph[i].final_CPT[j] << endl;
 		}
 		cout << "-----------------------------------------------"<<endl;
 	}
+}
+
+void update_probab(int sample_index,int direction)
+{
+	int miss = sample_list[sample_index].missing_index;
+	update(miss,sample_index,direction);
+	for(int i=0;i<Alarm.Pres_Graph[miss].Children.size();i++)
+	{
+		update(Alarm.Pres_Graph[miss].Children[i],sample_index,direction);
+	}
+}
+
+double probab(int node_index,int sample_index)
+{
+	int cpt_index = get_cpt_index(node_index,sample_index,-1);
+	int numerator = Alarm.Pres_Graph[node_index].CPT[cpt_index];
+	int denominator = 0;
+	for(int i=0;i<Alarm.Pres_Graph[node_index].nvalues;i++)
+	{
+		int cpt_index = get_cpt_index(node_index,sample_index,i);
+		denominator += Alarm.Pres_Graph[node_index].CPT[cpt_index];
+	}
+	double probab = (1.0 * numerator) / denominator;
+	return probab;
+}
+
+
+void update_sample(int sample_index)
+{
+	int miss = sample_list[sample_index].missing_index;
+	double probabs[Alarm.Pres_Graph[miss].nvalues];
+	for(int i=0;i<Alarm.Pres_Graph[miss].nvalues;i++)
+	{
+		sample_list[sample_index].values_points[miss] = i;
+		probabs[i] = probab(miss,sample_index);
+		for(int j=0;j<Alarm.Pres_Graph[miss].Children.size();j++)
+		{
+			probabs[i] *= (probab(Alarm.Pres_Graph[miss].Children[j],sample_index));
+		}
+	}
+	std::default_random_engine generator;
+	discrete_distribution<> distribution (probabs,probabs+Alarm.Pres_Graph[miss].nvalues);
+	int number = distribution(generator);
+	sample_list[sample_index].values_points[miss] = number;
+
+
 }
 
 
@@ -280,20 +337,44 @@ int main()
 	read_network();
 	read_samples();
 	initialize_distribution();
-	debug_print();
-	int max_iter = 10000;
+	// debug_print();
+	int max_iter = 1;
 	for(int i=0;i<max_iter;i++)
 	{
 		for(int j=0;j<Alarm.Pres_Graph.size();j++)
 		{
-			for(int k=0;Alarm.Pres_Graph[j].updated_CPT.size();k++)
-				Alarm.Pres_Graph[j].CPT[k] = Alarm.Pres_Graph[j].updated_CPT[k];
+			for(int k=0;k<Alarm.Pres_Graph[j].CPT.size();k++)
+				 Alarm.Pres_Graph[j].CPT[k] = Alarm.Pres_Graph[j].updated_CPT[k];
 		}
 		for(int j=0;j<sample_list.size();j++)
 		{
-			
+			if(sample_list[j].missing_index==-1)
+				continue;
+			update_probab(j,-1);
+			update_sample(j);
+			update_probab(j,1);
 		}
 
 	}
 
+	for(int i=0;i<Alarm.Pres_Graph.size();i++)
+	{
+		int cpt_len = Alarm.Pres_Graph[i].CPT.size();
+		int nvals = Alarm.Pres_Graph[i].nvalues;
+		int imp = cpt_len/nvals;
+		int summs[cpt_len/nvals];
+		for(int j=0;j<imp;j++)
+		{
+			summs[j] = 0;
+		}
+		for(int j=0;j<cpt_len;j++)
+		{
+			summs[j%imp] += Alarm.Pres_Graph[i].CPT[j];
+		}
+		for(int j=0;j<cpt_len;j++)
+		{
+			Alarm.Pres_Graph[i].final_CPT[j] =  (1.0 * Alarm.Pres_Graph[i].CPT[j]) / summs[j%imp] ;
+		}
+	}
+	debug_print();
 }

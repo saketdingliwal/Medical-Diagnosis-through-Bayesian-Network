@@ -5,10 +5,13 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include<bits/stdc++.h>
 
 
 // Format checker just assumes you have Alarm.bif and Solved_Alarm.bif (your file) in current directory
 using namespace std;
+
+
 
 // Our graph consists of a list of nodes where each node is represented as follows:
 class Graph_Node{
@@ -74,6 +77,17 @@ public:
     Children.push_back(new_child_index);
     return 1;
   }
+	int get_value_index(string val)
+	{
+		for(int i=0;i<nvalues;i++)
+		{
+			if(values[i].compare(val)==0)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
 };
 
 
@@ -103,10 +117,9 @@ public:
     return -1;
   }
 };
-
-network read_network()
+network Alarm;
+void read_network()
 {
-	network Alarm;
 	string line;
 	int find=0;
 	ifstream myfile("../dataset/alarm.bif");
@@ -165,7 +178,6 @@ network read_network()
  				{
 					Alarm.Pres_Graph[index].CPT.push_back(0); // TODO assuming only -1 to be in input
 					Alarm.Pres_Graph[index].updated_CPT.push_back(0);
- 					// 	curr_CPT.push_back(atof(temp.c_str()));
  					ss2>>temp;
 				}
    		}
@@ -176,10 +188,112 @@ network read_network()
   	if(find==1)
   	myfile.close();
 	}
-	return Alarm;
 }
+class sample
+{
+public:
+	vector <int> values_points;
+	int missing_index;
+};
+
+
+vector<sample> sample_list;
+
+void read_samples()
+{
+	int find=0;
+	ifstream myfile("../dataset/records.dat");
+	if (myfile.is_open())
+  {
+  	while (! myfile.eof() )
+  	{
+			sample this_sample;
+			string record;
+			getline (myfile,record);
+			istringstream buf(record);
+	    istream_iterator<std::string> beg(buf), end;
+	    vector<string> tokens(beg, end);
+			for(int i=0;i<tokens.size();i++)
+			{
+				string value = tokens[i];
+				int value_index = Alarm.Pres_Graph[i].get_value_index(value);
+				if(value_index==-1)
+				{
+					this_sample.missing_index = i;
+					this_sample.values_points.push_back(0);
+				}
+				else
+					this_sample.values_points.push_back(value_index);
+			}
+			sample_list.push_back(this_sample);
+		}
+		if(find==1)
+  	myfile.close();
+	}
+	sample_list.pop_back();
+}
+void update(int node_index,int sample_index,int direction)
+{
+	int cpt_index = 0;
+	int node_value = sample_list[sample_index].values_points[node_index];
+	int num_parents = Alarm.Pres_Graph[node_index].Parents.size();
+	int prod = 1;
+	for(int i=num_parents-1;i>=0;i--)
+	{
+		int parent_index = Alarm.Pres_Graph[node_index].Parents[i];
+		int parent_value = sample_list[sample_index].values_points[parent_index];
+		cpt_index += (parent_value*prod);
+		prod = prod * (Alarm.Pres_Graph[parent_index].values.size());
+	}
+	cpt_index += (node_value*prod);
+	Alarm.Pres_Graph[node_index].updated_CPT[cpt_index] +=(direction);
+}
+
+void initialize_distribution()
+{
+	for(int i=0;i<sample_list.size();i++)
+	{
+		for(int j=0;j<Alarm.Pres_Graph.size();j++)
+		{
+					update(j,i,1);
+		}
+	}
+}
+
+void debug_print()
+{
+	for(int i=0;i<Alarm.Pres_Graph.size();i++)
+	{
+		cout << Alarm.Pres_Graph[i].Node_Name <<endl;
+		for(int j=0;j<Alarm.Pres_Graph[i].updated_CPT.size();j++)
+		{
+			cout << Alarm.Pres_Graph[i].updated_CPT[j] << endl;
+		}
+		cout << "-----------------------------------------------"<<endl;
+	}
+}
+
+
 int main()
 {
-	network Alarm;
-	Alarm=read_network();
+
+	read_network();
+	read_samples();
+	initialize_distribution();
+	debug_print();
+	int max_iter = 10000;
+	for(int i=0;i<max_iter;i++)
+	{
+		for(int j=0;j<Alarm.Pres_Graph.size();j++)
+		{
+			for(int k=0;Alarm.Pres_Graph[j].updated_CPT.size();k++)
+				Alarm.Pres_Graph[j].CPT[k] = Alarm.Pres_Graph[j].updated_CPT[k];
+		}
+		for(int j=0;j<sample_list.size();j++)
+		{
+			
+		}
+
+	}
+
 }

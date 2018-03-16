@@ -6,7 +6,6 @@
 #include <sstream>
 #include <cstdlib>
 #include<bits/stdc++.h>
-#include <random>
 
 // Format checker just assumes you have Alarm.bif and Solved_Alarm.bif (your file) in current directory
 using namespace std;
@@ -176,8 +175,8 @@ void read_network()
  				ss2>> temp;
  				while(temp.compare(";")!=0)
  				{
-					Alarm.Pres_Graph[index].CPT.push_back(0); // TODO assuming only -1 to be in input
-					Alarm.Pres_Graph[index].updated_CPT.push_back(0);
+					Alarm.Pres_Graph[index].CPT.push_back(1); // TODO assuming only -1 to be in input
+					Alarm.Pres_Graph[index].updated_CPT.push_back(1);
 					Alarm.Pres_Graph[index].final_CPT.push_back(0.0);
 
  					ss2>>temp;
@@ -308,11 +307,13 @@ double probab(int node_index,int sample_index)
 	return probab;
 }
 
-
 void update_sample(int sample_index)
 {
 	int miss = sample_list[sample_index].missing_index;
 	double probabs[Alarm.Pres_Graph[miss].nvalues];
+	int poss_values = Alarm.Pres_Graph[miss].nvalues;
+	double comm_probabs[Alarm.Pres_Graph[miss].nvalues+1];
+	comm_probabs[0] = 0;
 	for(int i=0;i<Alarm.Pres_Graph[miss].nvalues;i++)
 	{
 		sample_list[sample_index].values_points[miss] = i;
@@ -321,26 +322,92 @@ void update_sample(int sample_index)
 		{
 			probabs[i] *= (probab(Alarm.Pres_Graph[miss].Children[j],sample_index));
 		}
+		comm_probabs[i+1] = comm_probabs[i] + probabs[i];
 	}
-	std::default_random_engine generator;
-	discrete_distribution<> distribution (probabs,probabs+Alarm.Pres_Graph[miss].nvalues);
-	int number = distribution(generator);
-	sample_list[sample_index].values_points[miss] = number;
+	double f = ((double)rand() / RAND_MAX) * comm_probabs[poss_values];
 
+	for(int i=1;i<=poss_values;i++)
+	{
+		if(f>comm_probabs[i-1] && f<comm_probabs[i])
+		{
+			sample_list[sample_index].values_points[miss] = i-1;
+			break;
+		}
+	}
+}
 
+void print_network()
+{
+	string line;
+	int find=0;
+	ifstream myfile("../dataset/alarm.bif");
+	string temp;
+	string name;
+	vector<string> values;
+  if (myfile.is_open())
+  {
+  	while (! myfile.eof() )
+  	{
+  		stringstream ss;
+    	getline (myfile,line);
+			cout << line<<endl;
+    	ss.str(line);
+   		ss>>temp;
+   		if(temp.compare("variable")==0)
+   		{
+ 				ss>>name;
+ 				getline (myfile,line);
+				cout << line<<endl;
+   		}
+   		else if(temp.compare("probability")==0)
+   		{
+ 				ss>>temp;
+ 				ss>>temp;
+        int index;
+ 				index=Alarm.get_index(temp);
+				getline (myfile,line);
+ 				stringstream ss2;
+ 				ss2.str(line);
+ 				ss2>> temp;
+				cout << temp << " ";
+ 				ss2>> temp;
+				int j=0;
+ 				while(temp.compare(";")!=0)
+ 				{
+					cout << Alarm.Pres_Graph[index].final_CPT[j]<<" ";
+					j++;
+ 					ss2>>temp;
+				}
+				cout << temp << endl;
+   		}
+      else
+      {
+      }
+  	}
+  	if(find==1)
+  	myfile.close();
+	}
 }
 
 
-int main()
+int main(int argc,char * argv[])
 {
-
+	time_t start = static_cast <unsigned> (time(0));
 	read_network();
 	read_samples();
 	initialize_distribution();
 	// debug_print();
-	int max_iter = 1;
-	for(int i=0;i<max_iter;i++)
+	// int max_iter = atoi(argv[1]);
+	for(int i=0;;i++)
 	{
+		time_t end = static_cast <unsigned> (time(0));
+		// cout << difftime(end,start);
+		if(i%100==0)
+			cout << i << endl;
+		if(difftime(end,start)>500)
+		{
+			break;
+		}
 		for(int j=0;j<Alarm.Pres_Graph.size();j++)
 		{
 			for(int k=0;k<Alarm.Pres_Graph[j].CPT.size();k++)
@@ -354,7 +421,6 @@ int main()
 			update_sample(j);
 			update_probab(j,1);
 		}
-
 	}
 
 	for(int i=0;i<Alarm.Pres_Graph.size();i++)
@@ -376,5 +442,7 @@ int main()
 			Alarm.Pres_Graph[i].final_CPT[j] =  (1.0 * Alarm.Pres_Graph[i].CPT[j]) / summs[j%imp] ;
 		}
 	}
-	debug_print();
+	// debug_print();
+	print_network();
+
 }

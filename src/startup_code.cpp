@@ -271,11 +271,18 @@ void initialize_distribution()
 		for(int j=0;j<Alarm.Pres_Graph.size();j++)
 		{
 			int miss = sample_list[i].missing_index;
-			for(int k=0;k<Alarm.Pres_Graph[miss].nvalues;k++)
+			if(miss==-1)
 			{
-				sample_list[i].values_points[miss] = k;
-				double update_amt = sample_list[i].missing_value[k];
-				update(j,i,1,update_amt);
+				update(j,i,1,1.0);
+			}
+			else
+			{
+				for(int k=0;k<Alarm.Pres_Graph[miss].nvalues;k++)
+				{
+					sample_list[i].values_points[miss] = k;
+					double update_amt = sample_list[i].missing_value[k];
+					update(j,i,1,update_amt);
+				}
 			}
 		}
 	}

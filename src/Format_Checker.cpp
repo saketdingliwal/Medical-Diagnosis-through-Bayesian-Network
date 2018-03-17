@@ -371,7 +371,7 @@ int main()
 {
 	network Alarm1,Alarm2;
 	// check_format();
-    Alarm1=read_network((char*)"../outputs_tests/solved_alarm.bif");
+    Alarm1=read_network((char*)"../outputs_tests/sample5.dump");
     Alarm2=read_network((char*)"../dataset/gold_alarm.bif");
     float score=0;
     for(int i=0;i<Alarm1.netSize();i++)

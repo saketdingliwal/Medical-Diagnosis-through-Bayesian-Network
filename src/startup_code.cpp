@@ -20,8 +20,8 @@ public:
 	vector<int> Parents; // Parents of a particular node- note these are names of parents
 	int nvalues;  // Number of categories a variable represented by this node can take
 	vector<string> values; // Categories of possible values
-	vector<int> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
-	vector<int> updated_CPT;
+	vector<double> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
+	vector<double> updated_CPT;
 	vector <double> final_CPT;
 
 	// Constructor- a node is initialised with its name and its categories
@@ -43,7 +43,7 @@ public:
 	{
 		return Parents;
 	}
-	vector<int> get_CPT()
+	vector<double> get_CPT()
 	{
 		return CPT;
 	}
@@ -55,7 +55,7 @@ public:
 	{
 		return values;
 	}
-	void set_CPT(vector<int> new_CPT)
+	void set_CPT(vector<double> new_CPT)
 	{
 		CPT.clear();
 		CPT=new_CPT;
@@ -175,8 +175,8 @@ void read_network()
  				ss2>> temp;
  				while(temp.compare(";")!=0)
  				{
-					Alarm.Pres_Graph[index].CPT.push_back(1); // TODO assuming only -1 to be in input
-					Alarm.Pres_Graph[index].updated_CPT.push_back(1);
+					Alarm.Pres_Graph[index].CPT.push_back(0.001); // TODO assuming only -1 to be in input
+					Alarm.Pres_Graph[index].updated_CPT.push_back(0.001);
 					Alarm.Pres_Graph[index].final_CPT.push_back(0.0);
 
  					ss2>>temp;
@@ -195,6 +195,7 @@ class sample
 public:
 	vector <int> values_points;
 	int missing_index;
+	vector <double> missing_value;
 };
 
 
@@ -225,6 +226,10 @@ void read_samples()
 				{
 					this_sample.missing_index = i;
 					this_sample.values_points.push_back(0);
+					for(int j=0;j<Alarm.Pres_Graph[i].nvalues;j++)
+					{
+						this_sample.missing_value.push_back((1.0/Alarm.Pres_Graph[i].nvalues));
+					}
 				}
 				else
 					this_sample.values_points.push_back(value_index);
@@ -253,10 +258,10 @@ int get_cpt_index(int node_index,int sample_index,int node_value)
 	cpt_index += (node_value*prod);
 	return cpt_index;
 }
-void update(int node_index,int sample_index,int direction)
+void update(int node_index,int sample_index,int direction,double weight)
 {
 	int cpt_index = get_cpt_index(node_index,sample_index,-1);
-	Alarm.Pres_Graph[node_index].updated_CPT[cpt_index] +=(direction);
+	Alarm.Pres_Graph[node_index].updated_CPT[cpt_index] += (weight * direction);
 }
 
 void initialize_distribution()
@@ -265,7 +270,13 @@ void initialize_distribution()
 	{
 		for(int j=0;j<Alarm.Pres_Graph.size();j++)
 		{
-					update(j,i,1);
+			int miss = sample_list[i].missing_index;
+			for(int k=0;k<Alarm.Pres_Graph[miss].nvalues;k++)
+			{
+				sample_list[i].values_points[miss] = k;
+				double update_amt = sample_list[i].missing_value[k];
+				update(j,i,1,update_amt);
+			}
 		}
 	}
 }
@@ -286,18 +297,29 @@ void debug_print()
 void update_probab(int sample_index,int direction)
 {
 	int miss = sample_list[sample_index].missing_index;
-	update(miss,sample_index,direction);
+	for(int i=0;i<Alarm.Pres_Graph[miss].nvalues;i++)
+	{
+		double update_amt = sample_list[sample_index].missing_value[i];
+		sample_list[sample_index].values_points[miss] = i;
+		update(miss,sample_index,direction,update_amt);
+	}
 	for(int i=0;i<Alarm.Pres_Graph[miss].Children.size();i++)
 	{
-		update(Alarm.Pres_Graph[miss].Children[i],sample_index,direction);
+		for(int j=0;j<Alarm.Pres_Graph[miss].nvalues;j++)
+		{
+			sample_list[sample_index].values_points[miss] = j;
+			double update_amt = sample_list[sample_index].missing_value[j];
+			update(Alarm.Pres_Graph[miss].Children[i],sample_index,direction,update_amt);
+		}
+
 	}
 }
 
 double probab(int node_index,int sample_index)
 {
 	int cpt_index = get_cpt_index(node_index,sample_index,-1);
-	int numerator = Alarm.Pres_Graph[node_index].CPT[cpt_index];
-	int denominator = 0;
+	double numerator = Alarm.Pres_Graph[node_index].CPT[cpt_index];
+	double denominator = 0;
 	for(int i=0;i<Alarm.Pres_Graph[node_index].nvalues;i++)
 	{
 		int cpt_index = get_cpt_index(node_index,sample_index,i);
@@ -324,15 +346,9 @@ void update_sample(int sample_index)
 		}
 		comm_probabs[i+1] = comm_probabs[i] + probabs[i];
 	}
-	double f = ((double)rand() / RAND_MAX) * comm_probabs[poss_values];
-
-	for(int i=1;i<=poss_values;i++)
+	for(int i=0;i<Alarm.Pres_Graph[miss].nvalues;i++)
 	{
-		if(f>comm_probabs[i-1] && f<comm_probabs[i])
-		{
-			sample_list[sample_index].values_points[miss] = i-1;
-			break;
-		}
+		sample_list[sample_index].missing_value[i] = (1.0 * probabs[i])/(comm_probabs[Alarm.Pres_Graph[miss].nvalues]);
 	}
 }
 
@@ -397,17 +413,18 @@ int main(int argc,char * argv[])
 	read_samples();
 	initialize_distribution();
 	// debug_print();
-	// int max_iter = atoi(argv[1]);
-	for(int i=0;;i++)
+	int max_iter = atoi(argv[1]);
+	for(int i=0;i<max_iter;i++)
 	{
 		time_t end = static_cast <unsigned> (time(0));
 		// cout << difftime(end,start);
-		if(i%100==0)
-			cout << i << endl;
-		if(difftime(end,start)>500)
-		{
-			break;
-		}
+		// if(i%100==0)
+		// 	// cout << i << endl;
+
+		// if(difftime(end,start)>4)
+		// {
+		// 	break;
+		// }
 		for(int j=0;j<Alarm.Pres_Graph.size();j++)
 		{
 			for(int k=0;k<Alarm.Pres_Graph[j].CPT.size();k++)
@@ -428,10 +445,10 @@ int main(int argc,char * argv[])
 		int cpt_len = Alarm.Pres_Graph[i].CPT.size();
 		int nvals = Alarm.Pres_Graph[i].nvalues;
 		int imp = cpt_len/nvals;
-		int summs[cpt_len/nvals];
+		double summs[cpt_len/nvals];
 		for(int j=0;j<imp;j++)
 		{
-			summs[j] = 0;
+			summs[j] = 0.0;
 		}
 		for(int j=0;j<cpt_len;j++)
 		{
